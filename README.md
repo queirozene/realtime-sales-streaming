@@ -31,25 +31,31 @@ pelo próprio CDC) e, a cada evento de `vendas`, resolve `cupom_id -> vendedor` 
 `produto_id -> nome/canal`, gravando o registro já pronto em
 `comercial.fact_venda_realtime` no Postgres — essa é a tabela que o Metabase deve consumir.
 
-## Pré-requisito: habilitar Docker no WSL
+## Pré-requisitos
 
-O Docker Desktop está instalado no Windows mas a integração com a distro `Ubuntu-22.04`
-ainda não está ativa. Antes de rodar o `docker compose`:
+- **Docker Desktop** (macOS, Windows ou Linux) com `docker compose`. As imagens são
+  multi-arch, então rodam nativo tanto em Intel quanto em Apple Silicon (M1/M2/M3).
+- **git** para clonar o repositório.
 
-1. Abra o Docker Desktop no Windows.
-2. Settings → Resources → WSL Integration.
-3. Ative o toggle da distro `Ubuntu-22.04`.
-4. Apply & Restart.
+Não é preciso instalar MySQL, Kafka, Python etc. na máquina — tudo roda em containers.
+A única imagem custom (o serviço `enrichment`) é buildada localmente pelo compose; as
+demais são imagens oficiais do Docker Hub, baixadas automaticamente no primeiro `up`.
+
+> **No Windows via WSL2:** abra o Docker Desktop → Settings → Resources → WSL Integration
+> e ative o toggle da sua distro antes de rodar o `docker compose`.
 
 ## Subindo o ambiente
 
 ```bash
+git clone https://github.com/queirozene/realtime-sales-streaming.git
 cd realtime-sales-streaming
+cp .env.example .env          # cria o arquivo de variaveis (senhas dos containers)
 docker compose up -d --build
 ```
 
-Aguarde o MySQL e o Postgres ficarem `healthy` (docker compose ps), depois registre o
-connector do Debezium:
+O primeiro `up` baixa as imagens (alguns minutos, só na primeira vez) e builda o
+`enrichment`. Aguarde o MySQL e o Postgres ficarem `healthy` (`docker compose ps`),
+depois registre o connector do Debezium:
 
 ```bash
 ./scripts/register-connector.sh
