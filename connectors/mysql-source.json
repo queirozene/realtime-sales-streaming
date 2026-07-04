@@ -1,0 +1,23 @@
+{
+  "name": "comercial-mysql-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.mysql.MySqlConnector",
+    "database.hostname": "mysql",
+    "database.port": "3306",
+    "database.user": "debezium",
+    "database.password": "dbz_pw",
+    "database.server.id": "184054",
+    "topic.prefix": "comercial",
+    "database.include.list": "comercial",
+    "table.include.list": "comercial.vendas,comercial.cupons,comercial.vendedores,comercial.produtos",
+    "schema.history.internal.kafka.bootstrap.servers": "kafka:29092",
+    "schema.history.internal.kafka.topic": "schema-changes.comercial",
+    "include.schema.changes": "false",
+    "snapshot.mode": "initial",
+    "tombstones.on.delete": "false",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter.schemas.enable": "false"
+  }
+}
