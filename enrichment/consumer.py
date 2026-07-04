@@ -4,6 +4,7 @@ import os
 import time
 
 import psycopg2
+import pymysql
 from confluent_kafka import Consumer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -14,6 +15,13 @@ TOPIC_PREFIX = os.environ.get("TOPIC_PREFIX", "comercial")
 POSTGRES_DSN = os.environ.get(
     "POSTGRES_DSN", "dbname=dw user=dw password=dw_pw host=postgres port=5432"
 )
+MYSQL_CFG = {
+    "host": os.environ.get("MYSQL_HOST", "mysql"),
+    "port": int(os.environ.get("MYSQL_PORT", "3306")),
+    "user": os.environ.get("MYSQL_USER", "debezium"),
+    "password": os.environ.get("MYSQL_PASSWORD", "dbz_pw"),
+    "database": os.environ.get("MYSQL_DB", "comercial"),
+}
 
 TOPICS = {
     "vendedores": f"{TOPIC_PREFIX}.comercial.vendedores",
@@ -22,9 +30,11 @@ TOPICS = {
     "vendas": f"{TOPIC_PREFIX}.comercial.vendas",
 }
 
-# Cache local das tabelas de dimensao, alimentado pelo proprio CDC.
-# Como o Debezium faz snapshot inicial das tabelas antes das vendas,
-# essas dimensoes chegam populadas antes (ou junto) dos eventos de venda.
+# Cache local das dimensoes, mantido quente pelo CDC (reflete mudancas em tempo
+# real, ex: um cupom reatribuido a outro vendedor). Como o Kafka NAO garante
+# ordem entre topicos diferentes, uma venda pode chegar antes da sua dimensao
+# ter sido cacheada. Por isso, todo cache miss cai num lookup direto no MySQL
+# (fonte da verdade), tornando o enriquecimento correto independente da ordem.
 vendedores_cache = {}
 cupons_cache = {}
 produtos_cache = {}
@@ -39,10 +49,63 @@ def connect_postgres():
             time.sleep(3)
 
 
-def upsert_venda(conn, venda):
-    cupom = cupons_cache.get(venda["cupom_id"], {})
-    vendedor = vendedores_cache.get(cupom.get("vendedor_id"), {})
-    produto = produtos_cache.get(venda["produto_id"], {})
+def connect_mysql():
+    while True:
+        try:
+            return pymysql.connect(
+                cursorclass=pymysql.cursors.DictCursor,
+                autocommit=True,
+                **MYSQL_CFG,
+            )
+        except pymysql.err.OperationalError:
+            log.warning("mysql indisponivel, tentando novamente em 3s...")
+            time.sleep(3)
+
+
+def _mysql_lookup(mysql, table, row_id):
+    """Busca uma linha de dimensao no MySQL por id (fallback de cache miss)."""
+    try:
+        with mysql.cursor() as cur:
+            cur.execute(f"SELECT * FROM {table} WHERE id = %s", (row_id,))
+            return cur.fetchone()
+    except pymysql.err.OperationalError:
+        # conexao caiu; reconecta e tenta uma vez
+        mysql.ping(reconnect=True)
+        with mysql.cursor() as cur:
+            cur.execute(f"SELECT * FROM {table} WHERE id = %s", (row_id,))
+            return cur.fetchone()
+
+
+def get_cupom(mysql, cupom_id):
+    if cupom_id not in cupons_cache:
+        row = _mysql_lookup(mysql, "cupons", cupom_id)
+        if row:
+            cupons_cache[cupom_id] = row
+    return cupons_cache.get(cupom_id, {})
+
+
+def get_vendedor(mysql, vendedor_id):
+    if vendedor_id is None:
+        return {}
+    if vendedor_id not in vendedores_cache:
+        row = _mysql_lookup(mysql, "vendedores", vendedor_id)
+        if row:
+            vendedores_cache[vendedor_id] = row
+    return vendedores_cache.get(vendedor_id, {})
+
+
+def get_produto(mysql, produto_id):
+    if produto_id not in produtos_cache:
+        row = _mysql_lookup(mysql, "produtos", produto_id)
+        if row:
+            produtos_cache[produto_id] = row
+    return produtos_cache.get(produto_id, {})
+
+
+def upsert_venda(conn, mysql, venda):
+    cupom = get_cupom(mysql, venda["cupom_id"])
+    vendedor = get_vendedor(mysql, cupom.get("vendedor_id"))
+    produto = get_produto(mysql, venda["produto_id"])
 
     with conn.cursor() as cur:
         cur.execute(
@@ -107,6 +170,7 @@ def main():
     )
     consumer.subscribe(list(TOPICS.values()))
     conn = connect_postgres()
+    mysql = connect_mysql()
 
     log.info("consumindo topicos: %s", list(TOPICS.values()))
 
@@ -116,28 +180,35 @@ def main():
             if msg is None:
                 continue
             if msg.error():
-                log.error("erro no kafka: %s", msg.error())
+                # UNKNOWN_TOPIC_OR_PART e esperado ate o Debezium criar os topicos
                 continue
             if not msg.value():
                 continue  # tombstone de delete
 
-            payload = json.loads(msg.value())
-            after = payload.get("after")
-            if after is None:
-                continue  # evento de delete, ignorado no POC
+            try:
+                payload = json.loads(msg.value())
+                after = payload.get("after")
+                if after is None:
+                    continue  # evento de delete, ignorado no POC
 
-            topic = msg.topic()
-            if topic == TOPICS["vendedores"]:
-                vendedores_cache[after["id"]] = after
-            elif topic == TOPICS["cupons"]:
-                cupons_cache[after["id"]] = after
-            elif topic == TOPICS["produtos"]:
-                produtos_cache[after["id"]] = after
-            elif topic == TOPICS["vendas"]:
-                upsert_venda(conn, after)
+                topic = msg.topic()
+                if topic == TOPICS["vendedores"]:
+                    vendedores_cache[after["id"]] = after
+                elif topic == TOPICS["cupons"]:
+                    cupons_cache[after["id"]] = after
+                elif topic == TOPICS["produtos"]:
+                    produtos_cache[after["id"]] = after
+                elif topic == TOPICS["vendas"]:
+                    upsert_venda(conn, mysql, after)
+            except Exception:
+                # nao deixa uma mensagem problematica derrubar o pipeline;
+                # loga, faz rollback da transacao e segue para a proxima
+                conn.rollback()
+                log.exception("falha ao processar mensagem do topico %s", msg.topic())
     finally:
         consumer.close()
         conn.close()
+        mysql.close()
 
 
 if __name__ == "__main__":

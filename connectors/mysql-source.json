@@ -15,6 +15,7 @@
     "include.schema.changes": "false",
     "snapshot.mode": "initial",
     "tombstones.on.delete": "false",
+    "decimal.handling.mode": "string",
     "key.converter": "org.apache.kafka.connect.json.JsonConverter",
     "value.converter": "org.apache.kafka.connect.json.JsonConverter",
     "key.converter.schemas.enable": "false",

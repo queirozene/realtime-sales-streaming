@@ -20,9 +20,10 @@ services:
       - ./mysql/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 20
+      start_period: 180s
 
   kafka:
     image: apache/kafka:3.7.0
@@ -46,7 +47,7 @@ services:
       KAFKA_NUM_PARTITIONS: 3
 
   kafka-connect:
-    image: debezium/connect:2.7
+    image: debezium/connect:2.7.3.Final
     container_name: comercial-connect
     restart: unless-stopped
     depends_on:
@@ -81,9 +82,10 @@ services:
       - ./postgres/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 20
+      start_period: 60s
 
   enrichment:
     build: ./enrichment
@@ -94,10 +96,17 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+      mysql:
+        condition: service_healthy
     environment:
       KAFKA_BOOTSTRAP: kafka:29092
       TOPIC_PREFIX: comercial
       POSTGRES_DSN: dbname=${POSTGRES_DB} user=${POSTGRES_USER} password=${POSTGRES_PASSWORD} host=postgres port=5432
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_USER: ${DEBEZIUM_DB_USER}
+      MYSQL_PASSWORD: ${DEBEZIUM_DB_PASSWORD}
+      MYSQL_DB: ${MYSQL_DATABASE}
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
