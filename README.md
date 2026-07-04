@@ -1,7 +1,11 @@
-# Ciclic Comercial Streaming (POC)
+# Realtime Sales Streaming (CDC POC)
 
-Streaming de vendas do comercial: captura mudanças no MySQL em tempo real, atribui
+Streaming de vendas em tempo real: captura mudanças no MySQL via CDC, atribui
 cada venda ao cupom/vendedor correto e alimenta um data warehouse consumido pelo Metabase.
+
+Stack: **MySQL + Debezium + Kafka + Python + Postgres + Metabase**, tudo via Docker Compose.
+O cenário de exemplo é uma operação comercial de seguros (viagem, celular, residencial,
+saúde) onde vendedores fecham vendas atribuindo o próprio cupom.
 
 ## Arquitetura
 
@@ -40,7 +44,7 @@ ainda não está ativa. Antes de rodar o `docker compose`:
 ## Subindo o ambiente
 
 ```bash
-cd ~/repos/ciclic-comercial-streaming
+cd realtime-sales-streaming
 docker compose up -d --build
 ```
 
@@ -90,7 +94,7 @@ docker exec -it comercial-dw psql -U dw -d dw -c \
 ## Próximos passos (rumo à produção / Redshift)
 
 - **Fonte real**: trocar host/usuário/senha do connector (`connectors/mysql-source.json`)
-  para apontar para uma réplica de leitura do MySQL de produção da Ciclic (não o primary),
+  para apontar para uma réplica de leitura do MySQL de produção (não o primary),
   com um usuário dedicado só com `REPLICATION SLAVE`/`REPLICATION CLIENT`/`SELECT`.
 - **Destino real**: trocar o `POSTGRES_DSN` do `enrichment` por uma conexão Redshift
   (via `psycopg2` ou `redshift_connector`) e criar a tabela `fact_venda_realtime` no

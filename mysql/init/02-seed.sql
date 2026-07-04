@@ -1,7 +1,7 @@
 INSERT INTO vendedores (nome, email) VALUES
-  ("Ana Souza", "ana.souza@ciclic.com.br"),
-  ("Bruno Lima", "bruno.lima@ciclic.com.br"),
-  ("Carla Dias", "carla.dias@ciclic.com.br");
+  ("Ana Souza", "ana.souza@example.com"),
+  ("Bruno Lima", "bruno.lima@example.com"),
+  ("Carla Dias", "carla.dias@example.com");
 
 INSERT INTO cupons (codigo, vendedor_id) VALUES
   ("ANA10", 1),
