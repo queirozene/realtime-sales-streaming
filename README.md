@@ -7,6 +7,9 @@ Stack: **MySQL + Debezium + Kafka + Python + Postgres + Metabase**, tudo via Doc
 O cenário de exemplo é uma operação comercial de seguros (viagem, celular, residencial,
 saúde) onde vendedores fecham vendas atribuindo o próprio cupom.
 
+> 📖 Quer entender o funcionamento passo a passo, da lógica aos containers?
+> Veja **[ARQUITETURA.md](ARQUITETURA.md)**.
+
 ## Arquitetura
 
 ```
